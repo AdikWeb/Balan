@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import json
 import os
 import random
 import string
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 JSON_FILE = 'lobbies.json'
 
@@ -68,18 +70,21 @@ def get_players(lobby_code):
         })
     return jsonify({"players": [], "host": None})
 @app.route('/rate', methods=['POST'])
-def rate():
+@app.route('/reset_rating', methods=['POST'])
+def reset_rating():
     rater = request.json['rater']
     rated = request.json['rated']
-    rating = request.json['rating']
     lobby_code = request.json['lobby_code']
 
     if lobby_code not in lobbies or rater not in lobbies[lobby_code]["players"] or rated not in lobbies[lobby_code]["players"]:
         return jsonify({"success": False, "message": "Invalid lobby or player"})
 
-    lobbies[lobby_code]["players"][rater]["ratings"][rated] = rating
-    save_lobbies(lobbies)
-    return jsonify({"success": True})
+    if rated in lobbies[lobby_code]["players"][rater]["ratings"]:
+        del lobbies[lobby_code]["players"][rater]["ratings"][rated]
+        save_lobbies(lobbies)
+        return jsonify({"success": True})
+    else:
+        return jsonify({"success": False, "message": "Rating not found"})
 
 
 @app.route('/get_average_ratings/<lobby_code>', methods=['GET'])
@@ -120,8 +125,36 @@ def divide_teams():
         team_ratings[target_team] += rating
     return jsonify({"success": True, "teams": teams})
 
+@app.route('/remove_player', methods=['POST'])
+def remove_player():
+    player = request.json['player']
+    lobby_code = request.json['lobby_code']
+
+    if lobby_code not in lobbies or player not in lobbies[lobby_code]["players"]:
+        return jsonify({"success": False, "message": "Invalid lobby or player"})
+
+    del lobbies[lobby_code]["players"][player]
+
+    # If the removed player was the host, assign a new host
+    if lobbies[lobby_code]["host"] == player:
+        if lobbies[lobby_code]["players"]:
+            lobbies[lobby_code]["host"] = next(iter(lobbies[lobby_code]["players"]))
+        else:
+            lobbies[lobby_code]["host"] = None
+
+    save_lobbies(lobbies)
+    return jsonify({"success": True})
 
 
+@socketio.on('join')
+def on_join(data):
+    room = data['lobby_code']
+    join_room(room)
+
+@socketio.on('teams_divided')
+def on_teams_divided(data):
+    room = data['lobby_code']
+    emit('teams_divided', data, room=room)
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=27100)
+    socketio.run(app, debug=True, host='0.0.0.0', port=27100)
 
