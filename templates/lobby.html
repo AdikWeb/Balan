@@ -21,8 +21,46 @@
         font-weight: bold;
         margin-left: 10px;
     }
+
+    .reset-btn {
+        margin-left: 10px;
+        padding: 5px 10px;
+        background-color: #ff9999;
+        border: 1px solid #ff6666;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .reset-btn:hover {
+        background-color: #ff6666;
+    }
+
+    .remove-btn {
+        margin-left: 10px;
+        padding: 5px 10px;
+        background-color: #ff4444;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .remove-btn:hover {
+        background-color: #cc0000;
+    }
+
+    #teams {
+        margin-top: 20px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+    }
     </style>
+    <script>
+        let playerRatings = {};
+    </script>
 </head>
+
 <body>
     <h1>Team Divider - Lobby</h1>
     <div id="joinSection">
@@ -111,26 +149,42 @@
             loadPlayers();
         }
 
-
-
-
-
-
         function loadPlayers() {
-            $.get('/get_players/' + lobbyCode, function(data) {
-                $.get('/get_average_ratings/' + lobbyCode, function(averageRatings) {
-                    let tbody = $('#playersTable tbody');
-                    tbody.empty();
-                    data.players.forEach(function(player) {
-                        if (player !== currentPlayer) {
-                            let row = $('<tr>');
-                            row.append($('<td>').text(player));
-                            let averageRating = averageRatings[player];
-                            let averageRatingDisplay = (averageRating !== null && averageRating !== undefined)
-                                ? Number(averageRating).toFixed(1)
-                                : 'N/A';
-                            row.append($('<td>').html('<span class="average-rating">' + averageRatingDisplay + '</span>'));
-                            let ratingCell = $('<td>');
+        $.get('/get_players/' + lobbyCode, function(data) {
+            $.get('/get_average_ratings/' + lobbyCode, function(averageRatings) {
+                let tbody = $('#playersTable tbody');
+                tbody.empty();
+
+                // Add current player to the top of the table
+                let currentPlayerRow = $('<tr>');
+                currentPlayerRow.append($('<td>').text(currentPlayer + ' (You)'));
+                let currentPlayerAvgRating = averageRatings[currentPlayer];
+                let currentPlayerAvgRatingDisplay = (currentPlayerAvgRating !== null && currentPlayerAvgRating !== undefined)
+                    ? Number(currentPlayerAvgRating).toFixed(1)
+                    : 'N/A';
+                currentPlayerRow.append($('<td>').html('<span class="average-rating">' + currentPlayerAvgRatingDisplay + '</span>'));
+                currentPlayerRow.append($('<td>').text('-'));
+                tbody.append(currentPlayerRow);
+
+                data.players.forEach(function(player) {
+                    if (player !== currentPlayer) {
+                        let row = $('<tr>');
+                        row.append($('<td>').text(player));
+                        let averageRating = averageRatings[player];
+                        let averageRatingDisplay = (averageRating !== null && averageRating !== undefined)
+                            ? Number(averageRating).toFixed(1)
+                            : 'N/A';
+                        row.append($('<td>').html('<span class="average-rating">' + averageRatingDisplay + '</span>'));
+                        let ratingCell = $('<td>');
+                        if (playerRatings[player]) {
+                            ratingCell.text(playerRatings[player]);
+                            ratingCell.append($('<button>')
+                                .text('Reset')
+                                .addClass('reset-btn')
+                                .click(function() {
+                                    resetRating(player);
+                                }));
+                        } else {
                             for (let i = 0; i <= 10; i++) {
                                 ratingCell.append($('<button>')
                                     .text(i)
@@ -139,55 +193,120 @@
                                         rate(player, i);
                                     }));
                             }
-                            row.append(ratingCell);
-                            tbody.append(row);
                         }
-                    });
+                        row.append(ratingCell);
+                        if (isHost) {
+                            row.append($('<td>').append($('<button>')
+                                .text('Remove')
+                                .addClass('remove-btn')
+                                .click(function() {
+                                    removePlayer(player);
+                                })));
+                        }
+                        tbody.append(row);
+                    }
                 });
             });
-        }
+        });
+    }
 
 
-        function rate(rated, rating) {
+
+  function rate(rated, rating) {
+        $.ajax({
+            url: '/rate',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({rater: currentPlayer, rated: rated, rating: rating, lobby_code: lobbyCode}),
+            success: function(response) {
+                if (response.success) {
+                    playerRatings[rated] = rating;
+                    loadPlayers();
+                } else {
+                    alert(response.message || 'Failed to rate player.');
+                }
+            }
+        });
+    }
+
+        function resetRating(player) {
+        delete playerRatings[player];
+        $.ajax({
+            url: '/reset_rating',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({rater: currentPlayer, rated: player, lobby_code: lobbyCode}),
+            success: function(response) {
+                if (response.success) {
+                    loadPlayers();
+                } else {
+                    alert(response.message || 'Failed to reset rating.');
+                }
+            }
+        });
+    }
+
+      function removePlayer(player) {
+        if (confirm('Are you sure you want to remove ' + player + ' from the lobby?')) {
             $.ajax({
-                url: '/rate',
+                url: '/remove_player',
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({rater: currentPlayer, rated: rated, rating: rating, lobby_code: lobbyCode}),
+                data: JSON.stringify({player: player, lobby_code: lobbyCode}),
                 success: function(response) {
                     if (response.success) {
-                        alert('Player rated successfully!');
-                        loadPlayers(); // Обновляем список игроков, чтобы отобразить новые средние рейтинги
+                        loadPlayers();
                     } else {
-                        alert(response.message || 'Failed to rate player.');
+                        alert(response.message || 'Failed to remove player.');
                     }
                 }
             });
         }
-
-
-
-        function divideTeams() {
-            let numTeams = $('#numTeams').val();
-            $.ajax({
-                url: '/divide_teams',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({lobby_code: lobbyCode, num_teams: parseInt(numTeams)}),
-                success: function(response) {
-                    if (response.success) {
-                        let teamsHtml = '';
-                        response.teams.forEach((team, index) => {
-                            teamsHtml += `Team ${index + 1}: ${team.join(', ')}<br>`;
-                        });
-                        $('#teams').html(teamsHtml);
-                    } else {
-                        alert(response.message || 'Failed to divide teams.');
-                    }
+    }
+ function divideTeams() {
+        let numTeams = $('#numTeams').val();
+        $.ajax({
+            url: '/divide_teams',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({lobby_code: lobbyCode, num_teams: parseInt(numTeams)}),
+            success: function(response) {
+                if (response.success) {
+                    let teamsHtml = '<h3>Teams:</h3>';
+                    response.teams.forEach((team, index) => {
+                        teamsHtml += `<p>Team ${index + 1}: ${team.join(', ')}</p>`;
+                    });
+                    $('#teams').html(teamsHtml);
+                    // Отправляем результаты деления всем игрокам
+                    socket.emit('teams_divided', {lobby_code: lobbyCode, teams: response.teams});
+                } else {
+                    alert(response.message || 'Failed to divide teams.');
                 }
-            });
-        }
+            }
+        });
+    }
+    let socket = io.connect('http://' + document.domain + ':' + location.port);
 
+    socket.on('connect', function() {
+        socket.emit('join', {lobby_code: lobbyCode});
+    });
+
+    socket.on('teams_divided', function(data) {
+        let teamsHtml = '<h3>Teams:</h3>';
+        data.teams.forEach((team, index) => {
+            teamsHtml += `<p>Team ${index + 1}: ${team.join(', ')}</p>`;
+        });
+        $('#teams').html(teamsHtml);
+    });
+
+    socket.on('player_removed', function(data) {
+        if (data.player === currentPlayer) {
+            alert('You have been removed from the lobby.');
+            window.location.href = '/';
+        } else {
+            loadPlayers();
+        }
+    });
     </script>
 </body>
 </html>
