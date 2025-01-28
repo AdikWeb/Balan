@@ -275,11 +275,16 @@
                 if (response.success) {
                     let teamsHtml = '<h3>Teams:</h3>';
                     response.teams.forEach((team, index) => {
-                        teamsHtml += `<p>Team ${index + 1}: ${team.join(', ')}</p>`;
+                        let teamRating = response.team_ratings[index].toFixed(2);
+                        teamsHtml += `<p>Team ${index + 1} (Rating: ${teamRating}): ${team.join(', ')}</p>`;
                     });
                     $('#teams').html(teamsHtml);
                     // Отправляем результаты деления всем игрокам
-                    socket.emit('teams_divided', {lobby_code: lobbyCode, teams: response.teams});
+                    socket.emit('teams_divided', {
+                        lobby_code: lobbyCode,
+                        teams: response.teams,
+                        team_ratings: response.team_ratings
+                    });
                 } else {
                     alert(response.message || 'Failed to divide teams.');
                 }
@@ -295,10 +300,12 @@
     socket.on('teams_divided', function(data) {
         let teamsHtml = '<h3>Teams:</h3>';
         data.teams.forEach((team, index) => {
-            teamsHtml += `<p>Team ${index + 1}: ${team.join(', ')}</p>`;
+            let teamRating = data.team_ratings[index].toFixed(2);
+            teamsHtml += `<p>Team ${index + 1} (Rating: ${teamRating}): ${team.join(', ')}</p>`;
         });
         $('#teams').html(teamsHtml);
     });
+
 
     socket.on('player_removed', function(data) {
         if (data.player === currentPlayer) {

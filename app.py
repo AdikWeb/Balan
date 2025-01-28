@@ -105,25 +105,38 @@ def get_average_ratings(lobby_code):
     return jsonify(average_ratings)
 
 
+def calculate_team_rating(team, player_ratings):
+    return sum(player_ratings.get(player, 0) for player in team)
 @app.route('/divide_teams', methods=['POST'])
 def divide_teams():
     lobby_code = request.json['lobby_code']
-    num_teams = request.json.get('num_teams', 2)
+    num_teams = request.json['num_teams']
     if lobby_code not in lobbies:
         return jsonify({"success": False, "message": "Lobby not found"})
 
-    average_ratings = get_average_ratings(lobby_code).json
-    sorted_players = sorted(average_ratings.items(), key=lambda x: x[1], reverse=True)
+    players = list(lobbies[lobby_code]["players"].keys())
+    if len(players) < num_teams:
+        return jsonify({"success": False, "message": "Not enough players for the specified number of teams"})
 
+    # Get average ratings for all players
+    average_ratings = get_average_ratings(lobby_code)
+
+    # Sort players by their average rating
+    sorted_players = sorted(players, key=lambda p: average_ratings.get(p, 0), reverse=True)
+
+    # Divide players into teams
     teams = [[] for _ in range(num_teams)]
-    team_ratings = [0] * num_teams
+    for i, player in enumerate(sorted_players):
+        teams[i % num_teams].append(player)
 
-    for player, rating in sorted_players:
-        # Находим команду с наименьшим суммарным рейтингом
-        target_team = min(range(num_teams), key=lambda i: team_ratings[i])
-        teams[target_team].append(player)
-        team_ratings[target_team] += rating
-    return jsonify({"success": True, "teams": teams})
+    # Calculate team ratings
+    team_ratings = [calculate_team_rating(team, average_ratings) for team in teams]
+
+    return jsonify({
+        "success": True,
+        "teams": teams,
+        "team_ratings": team_ratings
+    })
 
 @app.route('/remove_player', methods=['POST'])
 def remove_player():
