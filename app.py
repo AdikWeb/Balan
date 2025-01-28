@@ -108,9 +108,31 @@ def get_average_ratings(lobby_code):
 def calculate_team_rating(team, player_ratings):
     return sum(player_ratings.get(player, 0) for player in team)
 @app.route('/divide_teams', methods=['POST'])
+def calculate_average_ratings(lobby_code):
+    if lobby_code not in lobbies:
+        return {}
+
+    players = lobbies[lobby_code]["players"]
+    average_ratings = {}
+
+    for player in players:
+        ratings = [rating for other_player in players for rating in players[other_player]["ratings"].get(player, [])]
+        if ratings:
+            average_ratings[player] = sum(ratings) / len(ratings)
+        else:
+            average_ratings[player] = 0
+
+    return average_ratings
+
+@app.route('/get_average_ratings/<lobby_code>', methods=['GET'])
+def get_average_ratings(lobby_code):
+    return jsonify(calculate_average_ratings(lobby_code))
+
+@app.route('/divide_teams', methods=['POST'])
 def divide_teams():
     lobby_code = request.json['lobby_code']
     num_teams = request.json['num_teams']
+
     if lobby_code not in lobbies:
         return jsonify({"success": False, "message": "Lobby not found"})
 
@@ -119,7 +141,7 @@ def divide_teams():
         return jsonify({"success": False, "message": "Not enough players for the specified number of teams"})
 
     # Get average ratings for all players
-    average_ratings = get_average_ratings(lobby_code)
+    average_ratings = calculate_average_ratings(lobby_code)
 
     # Sort players by their average rating
     sorted_players = sorted(players, key=lambda p: average_ratings.get(p, 0), reverse=True)
@@ -137,6 +159,9 @@ def divide_teams():
         "teams": teams,
         "team_ratings": team_ratings
     })
+
+def calculate_team_rating(team, player_ratings):
+    return sum(player_ratings.get(player, 0) for player in team)
 
 @app.route('/remove_player', methods=['POST'])
 def remove_player():
