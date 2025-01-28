@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Team Divider - Create Lobby</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+<body>
+    <h1>Team Divider</h1>
+    <button onclick="createLobby()">Create New Lobby</button>
+    <div id="lobbyLink" style="display:none;">
+        <p>Share this link to invite players:</p>
+        <a id="lobbyUrl" href="#"></a>
+    </div>
+
+    <script>
+        function createLobby() {
+            $.ajax({
+                url: '/create_lobby',
+                type: 'POST',
+                success: function(response) {
+                    if (response.success) {
+                        let lobbyUrl = window.location.origin + '/join_lobby/' + response.lobby_code;
+                        $('#lobbyUrl').attr('href', lobbyUrl).text(lobbyUrl);
+                        $('#lobbyLink').show();
+                    } else {
+                        alert('Failed to create lobby. Please try again.');
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+

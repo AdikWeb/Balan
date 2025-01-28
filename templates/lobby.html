@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Team Divider - Lobby</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+    .rating-btn {
+        margin: 2px;
+        padding: 5px 10px;
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .rating-btn:hover {
+        background-color: #e0e0e0;
+    }
+
+    .average-rating {
+        font-weight: bold;
+        margin-left: 10px;
+    }
+    </style>
+</head>
+<body>
+    <h1>Team Divider - Lobby</h1>
+    <div id="joinSection">
+        <input type="text" id="name" placeholder="Enter your name">
+        <button onclick="join()">Join Lobby</button>
+    </div>
+    <div id="lobbySection" style="display:none;">
+        <h2>Welcome, <span id="playerName"></span>!</h2>
+        <h3>Players in Lobby</h3>
+        <table id="playersTable">
+            <thead>
+                <tr>
+                    <th>Player Name</th>
+                    <th>Average Rating</th>
+                    <th>Your Rating</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <br><br>
+        <div id="hostControls" style="display:none;">
+            <label for="numTeams">Number of teams:</label>
+            <input type="number" id="numTeams" min="2" max="10" value="2">
+            <button onclick="divideTeams()">Divide Teams</button>
+        </div>
+        <div id="teams"></div>
+    </div>
+
+    <script>
+        let currentPlayer = '';
+        let lobbyCode = '{{ lobby_code }}';
+        let isHost = false;
+
+        $(document).ready(function() {
+            currentPlayer = localStorage.getItem('playerName');
+            if (currentPlayer) {
+                checkPlayerInLobby(currentPlayer);
+            } else {
+                $('#joinSection').show();
+                $('#lobbySection').hide();
+            }
+        });
+
+        function checkPlayerInLobby(name) {
+            $.ajax({
+                url: '/join',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({name: name, lobby_code: lobbyCode}),
+                success: function(response) {
+                    if (response.success) {
+                        joinSuccess(name, response.isHost);
+                    } else {
+                        $('#name').val(name);
+                        $('#joinSection').show();
+                        $('#lobbySection').hide();
+                    }
+                },
+                error: function() {
+                    $('#name').val(name);
+                    $('#joinSection').show();
+                    $('#lobbySection').hide();
+                }
+            });
+        }
+
+        function join() {
+            let name = $('#name').val();
+            if (!name) {
+                alert('Please enter your name.');
+                return;
+            }
+            checkPlayerInLobby(name);
+        }
+
+        function joinSuccess(name, host) {
+            currentPlayer = name;
+            localStorage.setItem('playerName', name);
+            isHost = host;
+            $('#joinSection').hide();
+            $('#lobbySection').show();
+            $('#playerName').text(currentPlayer);
+            if (isHost) {
+                $('#hostControls').show();
+            }
+            loadPlayers();
+        }
+
+
+
+
+
+
+        function loadPlayers() {
+            $.get('/get_players/' + lobbyCode, function(data) {
+                $.get('/get_average_ratings/' + lobbyCode, function(averageRatings) {
+                    let tbody = $('#playersTable tbody');
+                    tbody.empty();
+                    data.players.forEach(function(player) {
+                        if (player !== currentPlayer) {
+                            let row = $('<tr>');
+                            row.append($('<td>').text(player));
+                            let averageRating = averageRatings[player];
+                            let averageRatingDisplay = (averageRating !== null && averageRating !== undefined)
+                                ? Number(averageRating).toFixed(1)
+                                : 'N/A';
+                            row.append($('<td>').html('<span class="average-rating">' + averageRatingDisplay + '</span>'));
+                            let ratingCell = $('<td>');
+                            for (let i = 0; i <= 10; i++) {
+                                ratingCell.append($('<button>')
+                                    .text(i)
+                                    .addClass('rating-btn')
+                                    .click(function() {
+                                        rate(player, i);
+                                    }));
+                            }
+                            row.append(ratingCell);
+                            tbody.append(row);
+                        }
+                    });
+                });
+            });
+        }
+
+
+        function rate(rated, rating) {
+            $.ajax({
+                url: '/rate',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({rater: currentPlayer, rated: rated, rating: rating, lobby_code: lobbyCode}),
+                success: function(response) {
+                    if (response.success) {
+                        alert('Player rated successfully!');
+                        loadPlayers(); // Обновляем список игроков, чтобы отобразить новые средние рейтинги
+                    } else {
+                        alert(response.message || 'Failed to rate player.');
+                    }
+                }
+            });
+        }
+
+
+
+        function divideTeams() {
+            let numTeams = $('#numTeams').val();
+            $.ajax({
+                url: '/divide_teams',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({lobby_code: lobbyCode, num_teams: parseInt(numTeams)}),
+                success: function(response) {
+                    if (response.success) {
+                        let teamsHtml = '';
+                        response.teams.forEach((team, index) => {
+                            teamsHtml += `Team ${index + 1}: ${team.join(', ')}<br>`;
+                        });
+                        $('#teams').html(teamsHtml);
+                    } else {
+                        alert(response.message || 'Failed to divide teams.');
+                    }
+                }
+            });
+        }
+
+    </script>
+</body>
+</html>
